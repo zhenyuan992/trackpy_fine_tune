@@ -242,7 +242,7 @@
                 <div id="status" style="display: none;"></div>
                 <div id="loading" class="loading" style="display: none;">
                     <div class="spinner"></div>
-                    <p>Loading Pyodide and trackpy...</p>
+                    <p>Loading Pyodide and trackpy... (takes 2mins, refresh if its longer than 3mins)</p>
                 </div>
                 <canvas id="canvas"></canvas>
                 <div id="results" class="results" style="display: none;"></div>
@@ -309,7 +309,7 @@
             try {
                 pyodide = await loadPyodide();
                 
-                loading.querySelector('p').textContent = 'Installing packages...';
+                loading.querySelector('p').textContent = 'Installing packages... (takes 2 mins... might need a refresh after 3 mins)';
                 await pyodide.loadPackage(['numpy', 'scipy', 'micropip', 'distutils']);
                 
                 // Patch collections for Python 3.10+ compatibility BEFORE installing trackpy
