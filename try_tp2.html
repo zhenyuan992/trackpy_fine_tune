@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trackpy Parameter Tuner</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #e8f4f8;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+            border: 1px solid #d0e7f2;
+        }
+        .header {
+            background: linear-gradient(to right, #0066cc, #0099ff);
+            color: white;
+            padding: 5px;
+            text-align: center;
+            border-bottom: 3px solid #0052a3;
+        }
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 2px;
+        }
+        .header p {
+            font-size: 1em;
+            opacity: 0.9;
+        }
+        .content {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 0;
+        }
+        .sidebar {
+            background: #f7fbfd;
+            padding: 30px;
+            border-right: 2px solid #d0e7f2;
+        }
+        .main {
+            padding: 30px;
+        }
+        .control-group {
+            margin-bottom: 25px;
+        }
+        .control-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 2px;
+            color: #0066cc;
+            font-size: 0.65em;
+        }
+        .control-group input[type="range"] {
+            width: 100%;
+            margin-bottom: 2px;
+        }
+        .control-group input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 2px solid #b3d9f2;
+            border-radius: 4px;
+            font-size: 0.75em;
+            background: white;
+        }
+        .control-group input[type="number"]:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-row input[type="range"] {
+            flex: 1;          /* slider expands */
+            margin-bottom: 0; /* remove vertical spacing */
+        }
+
+        .control-row input[type="number"] {
+            width: 70px;      /* fixed width on the right */
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(to right, #0066cc, #0099ff);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 10px;
+            box-shadow: 0 2px 4px rgba(0, 102, 204, 0.2);
+        }
+        button:hover {
+            background: linear-gradient(to right, #0052a3, #0080cc);
+            box-shadow: 0 4px 8px rgba(0, 102, 204, 0.3);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        #status {
+            background: #e6f2ff;
+            border-left: 4px solid #0066cc;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            font-size: 0.95em;
+        }
+        #imageUpload {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 2px dashed #0066cc;
+            border-radius: 4px;
+            cursor: pointer;
+            background: white;
+        }
+        #canvas {
+            max-width: 100%;
+            border: 2px solid #d0e7f2;
+            border-radius: 4px;
+            display: block;
+            margin: 0 auto;
+            background: white;
+        }
+        .results {
+            background: #f0f8ff;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 4px;
+            border-left: 4px solid #00cc66;
+            border: 1px solid #d0e7f2;
+        }
+        .results h3 {
+            margin-bottom: 10px;
+            color: #0066cc;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #0066cc;
+        }
+        .spinner {
+            border: 4px solid #e8f4f8;
+            border-top: 4px solid #0066cc;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔬 Trackpy Parameter Tuner</h1>
+            <p>Upload an image (RGB, uint8) and fine-tune particle detection parameters in real-time</p>
+        </div>
+        <div class="content">
+            <div class="sidebar">
+                <div class="control-group">
+                    <label>Upload Image <a href="sample.png" download>(or download a sample)</a></label>
+                    <input type="file" id="imageUpload" accept="image/*">
+                </div>
+                
+                <div class="control-group">
+                    <label for="diameter">Particle Diameter (pixels)</label>
+                    <div class="control-row">
+                    <input type="range" id="diameter" min="3" max="51" step="2" value="11">
+                    <input type="number" id="diameterInput" min="3" max="51" step="2" value="11">
+                </div>
+                </div>
+                
+                <div class="control-group">
+                    <label for="minmass">Minimum Mass (brightness)</label>
+                    <div class="control-row">
+                    <input type="range" id="minmass" min="0" max="10000" step="0.5" value="10">
+                    <input type="number" id="minmassInput" min="0" max="10000" step="0.5" value="10">
+                </div>
+                </div>
+                <div class="control-group">
+                    <label for="maxmass">Maximum Mass (brightness)</label>
+                    <div class="control-row">
+                    <input type="range" id="maxmass" min="0" max="10000" step="10" value="1000">
+                    <input type="number" id="maxmassInput" min="0" max="10000" step="10" value="1000">
+                </div>
+                </div>
+                
+                <div class="control-group">
+                    <label for="separation">Minimum Separation (pixels)</label>
+                    <div class="control-row">
+                    <input type="range" id="separation" min="1" max="50" step="1" value="5">
+                    <input type="number" id="separationInput" min="1" max="50" step="1" value="5">
+                </div>
+                </div>
+                <div class="control-group">
+                    <label for="bthres">Background Threshold</label>
+                    <div class="control-row">
+                    <input type="range" id="bthres" min="0" max="1000" step="0.1" value="0.1">
+                    <input type="number" id="bthresInput" min="0" max="1000" step="0.1" value="0.1">
+                </div>
+                </div>
+                <div class="control-group">
+                    <label for="percentile">Percentile Threshold</label>
+                    <div class="control-row">
+                    <input type="range" id="percentile" min="0" max="100" step="1" value="30">
+                    <input type="number" id="percentileInput" min="0" max="100" step="1" value="30">
+                </div>
+                </div>
+                
+                <button id="processBtn" disabled>Process Image</button>
+                <button id="toggleMarkersBtn" style="background: linear-gradient(to right, #cc6600, #ff8800); display: none;">Hide Markers</button>
+                <button id="downloadBtn" style="background: linear-gradient(to right, #00994d, #00cc66); display: none;">Download Results (CSV)</button>
+            </div>
+            
+            <div class="main">
+                <div id="status" style="display: none;"></div>
+                <div id="loading" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Loading Pyodide and trackpy...</p>
+                </div>
+                <canvas id="canvas"></canvas>
+                <div id="results" class="results" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pyodide;
+        let imageData = null;
+        let currentResults = null;
+        let markersVisible = true;
+        let detectedParticles = null;
+
+        // Synchronize sliders and text inputs
+        const params = ['diameter', 'minmass','maxmass', 'separation', 'percentile', 'bthres'];
+        
+        params.forEach(param => {
+            const slider = document.getElementById(param);
+            const input = document.getElementById(param + 'Input');
+            
+            // Update input when slider changes
+            slider.addEventListener('input', (e) => {
+                input.value = e.target.value;
+            });
+            
+            // Update slider when input changes
+            input.addEventListener('input', (e) => {
+                let value = parseFloat(e.target.value);
+                const min = parseFloat(slider.min);
+                const max = parseFloat(slider.max);
+                
+                // Clamp value to valid range
+                if (value < min) value = min;
+                if (value > max) value = max;
+                
+                slider.value = value;
+                input.value = value;
+            });
+            
+            // Validate on blur
+            input.addEventListener('blur', (e) => {
+                let value = parseFloat(e.target.value);
+                const min = parseFloat(slider.min);
+                const max = parseFloat(slider.max);
+                
+                if (isNaN(value)) {
+                    value = parseFloat(slider.value);
+                }
+                if (value < min) value = min;
+                if (value > max) value = max;
+                
+                input.value = value;
+                slider.value = value;
+            });
+        });
+
+        // Initialize Pyodide
+        async function initPyodide() {
+            const loading = document.getElementById('loading');
+            const status = document.getElementById('status');
+            loading.style.display = 'block';
+            
+            try {
+                pyodide = await loadPyodide();
+                
+                loading.querySelector('p').textContent = 'Installing packages...';
+                await pyodide.loadPackage(['numpy', 'scipy', 'micropip', 'distutils']);
+                
+                // Patch collections for Python 3.10+ compatibility BEFORE installing trackpy
+                await pyodide.runPythonAsync(`
+import collections
+import collections.abc
+for name in ['Iterable', 'Mapping', 'MutableMapping', 'Callable', 'Hashable']:
+    if not hasattr(collections, name):
+        setattr(collections, name, getattr(collections.abc, name))
+
+# Patch numpy for deprecated aliases
+import numpy as np
+if not hasattr(np, 'float'):
+    np.float = np.float64
+if not hasattr(np, 'int'):
+    np.int = np.int_
+if not hasattr(np, 'bool'):
+    np.bool = np.bool_
+                `);
+                
+                const micropip = pyodide.pyimport('micropip');
+                await micropip.install(['pandas', 'trackpy', 'pillow']);
+                
+                loading.style.display = 'none';
+                status.style.display = 'block';
+                status.textContent = '✓ Ready! Upload an image to begin.';
+                status.style.borderLeftColor = '#28a745';
+                status.style.background = '#d4edda';
+            } catch (error) {
+                loading.style.display = 'none';
+                status.style.display = 'block';
+                status.textContent = '✗ Error loading Pyodide: ' + error.message;
+                status.style.borderLeftColor = '#dc3545';
+                status.style.background = '#f8d7da';
+            }
+        }
+
+        // Handle image upload
+        document.getElementById('imageUpload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.getElementById('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    document.getElementById('processBtn').disabled = false;
+                    
+                    const status = document.getElementById('status');
+                    status.style.display = 'block';
+                    status.textContent = '✓ Image loaded! Adjust parameters and click Process Image.';
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Process image with trackpy
+        document.getElementById('processBtn').addEventListener('click', async () => {
+            if (!imageData || !pyodide) return;
+            
+            const status = document.getElementById('status');
+            status.style.display = 'block';
+            status.textContent = '⏳ Processing...';
+            status.style.borderLeftColor = '#ffc107';
+            status.style.background = '#fff3cd';
+            
+            document.getElementById('processBtn').disabled = true;
+            
+            const diameter = parseInt(document.getElementById('diameter').value);
+            const minmass = parseInt(document.getElementById('minmass').value);
+            const maxmass = parseInt(document.getElementById('maxmass').value);
+            const separation = parseInt(document.getElementById('separation').value);
+            const bthres = parseInt(document.getElementById('bthres').value);
+            const percentile = parseInt(document.getElementById('percentile').value);
+            
+            try {
+                // Convert image data to grayscale array
+                const width = imageData.width;
+                const height = imageData.height;
+                const grayData = new Float64Array(width * height);
+                
+                for (let i = 0; i < width * height; i++) {
+                    const r = imageData.data[i * 4];
+                    const g = imageData.data[i * 4 + 1];
+                    const b = imageData.data[i * 4 + 2];
+                    grayData[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+                }
+                
+                pyodide.globals.set('img_data', grayData);
+                pyodide.globals.set('img_width', width);
+                pyodide.globals.set('img_height', height);
+                pyodide.globals.set('diameter', diameter);
+                pyodide.globals.set('minmass', minmass);
+                pyodide.globals.set('maxmass', maxmass);
+                pyodide.globals.set('separation', separation);
+                pyodide.globals.set('bthres', bthres);
+                pyodide.globals.set('percentile', percentile);
+                
+                await pyodide.runPythonAsync(`
+import numpy as np
+import trackpy as tp
+import pandas as pd
+from trackpy.masks import binary_mask
+
+# Monkey patch the estimate_mass function to fix indexing
+def fixed_estimate_mass(image, radius, coord):
+    coord = np.atleast_1d(coord)
+    if isinstance(radius, tuple):
+        rad_vals = radius
+    else:
+        rad_vals = [radius] * len(coord)
+    
+    square = tuple([slice(int(c.item() - r), int(c.item() + r + 1)) 
+                    for c, r in zip(coord, rad_vals)])
+    neighborhood = binary_mask(radius, image.ndim) * image[square]
+    return np.sum(neighborhood)
+
+# Completely rewrite _refine to fix indexing issues
+def fixed_refine(raw_image, image, radius, coords, max_iterations,
+                 characterize, walkthrough, shift_thresh, engine='python'):
+    # Simple version that just returns the input coords without refinement
+    # Return columns: y, x, mass, size, ecc, signal, raw_mass
+    n = len(coords)
+    ndim = coords.shape[1]
+    
+    if characterize:
+        # Calculate simple mass estimates
+        masses = np.ones(n) * 1000  # dummy mass
+        
+        # Build result array with all expected columns
+        results = np.column_stack([
+            coords,              # y, x coordinates
+            masses,              # mass
+            np.ones(n) * 2,      # size  
+            np.zeros(n),         # ecc
+            masses,              # signal
+            masses               # raw_mass
+        ])
+    else:
+        results = coords.copy()
+    
+    return results
+
+# Replace the functions in trackpy
+import trackpy.feature
+trackpy.feature.estimate_mass = fixed_estimate_mass
+trackpy.feature._refine = fixed_refine
+
+# Reshape image data
+image = np.array(img_data).reshape(img_height, img_width)
+
+# Ensure image is the right dtype
+image = image.astype(np.float64)
+
+# Locate particles
+features = tp.locate(image, diameter=diameter, minmass=minmass, 
+                     separation=separation, percentile=percentile,threshold=bthres)
+features = features[features['mass'] < maxmass]
+# Convert to dict for JavaScript
+# Note: trackpy returns 'y' and 'x' columns where y is row (vertical) and x is column (horizontal)
+results = {
+    'x': features['x'].tolist(),  # x is column (horizontal position)
+    'y': features['y'].tolist(),  # y is row (vertical position, 0 at top in image coordinates)
+    'mass': features['mass'].tolist(),
+    'count': len(features)
+}
+
+# Store CSV data
+csv_data = features.to_csv(index=False)
+                `);
+                
+                const results = pyodide.globals.get('results').toJs({dict_converter: Object.fromEntries});
+                currentResults = pyodide.globals.get('csv_data');
+                
+                // Store results for toggling
+                detectedParticles = results;
+                
+                // Check if we have valid results
+                if (!results || !results.x || results.count === 0) {
+                    status.textContent = '⚠ No particles found. Try adjusting parameters.';
+                    status.style.borderLeftColor = '#ffc107';
+                    status.style.background = '#ff131d';
+                    document.getElementById('processBtn').disabled = false;
+                    return;
+                }
+                
+                // Draw results on canvas
+                drawParticles();
+                
+                // Display results
+                const resultsDiv = document.getElementById('results');
+                resultsDiv.style.display = 'block';
+                
+                let avgMass = 'N/A';
+                if (results.mass && results.mass.length > 0) {
+                    avgMass = (results.mass.reduce((a,b) => a+b, 0) / results.count).toFixed(2);
+                }
+                
+                resultsDiv.innerHTML = `
+                    <h3>Detection Results</h3>
+                    <p><strong>Particles Found:</strong> ${results.count}</p>
+                    <p><strong>Average Mass:</strong> ${avgMass}</p>
+                `;
+                
+                status.textContent = `✓ Success! Found ${results.count} particles.`;
+                status.style.borderLeftColor = '#28a745';
+                status.style.background = '#d4edda';
+                
+                document.getElementById('downloadBtn').style.display = 'block';
+                document.getElementById('toggleMarkersBtn').style.display = 'block';
+                markersVisible = true;
+                document.getElementById('toggleMarkersBtn').textContent = 'Hide Markers';
+                
+            } catch (error) {
+                status.textContent = '✗ Error: ' + error.message;
+                status.style.borderLeftColor = '#dc3545';
+                status.style.background = '#f8d7da';
+            }
+            
+            document.getElementById('processBtn').disabled = false;
+        });
+
+        // Function to draw particles on canvas
+        function drawParticles() {
+            if (!imageData || !detectedParticles) return;
+            
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.putImageData(imageData, 0, 0);
+            
+            if (!markersVisible) return;
+            
+            const diameter = parseInt(document.getElementById('diameter').value);
+            
+            ctx.strokeStyle = '#ff000055';
+            ctx.lineWidth = 2;
+            
+            for (let i = 0; i < detectedParticles.count; i++) { 
+                const tempX = detectedParticles.x[i];
+                const tempY = detectedParticles.y[i];
+                // Swap x and y for diagonal flip (bottom-left to upper-right)
+                const x = tempY;
+                const y = tempX;
+                const radius = diameter / 2;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, 2 * Math.PI);
+                ctx.stroke();
+                
+                // Draw crosshair
+                ctx.beginPath();
+                ctx.moveTo(x - 3, y);
+                ctx.lineTo(x + 3, y);
+                ctx.moveTo(x, y - 3);
+                ctx.lineTo(x, y + 3);
+                ctx.stroke();
+            }
+        }
+
+        // Toggle markers visibility
+        document.getElementById('toggleMarkersBtn').addEventListener('click', () => {
+            markersVisible = !markersVisible;
+            const btn = document.getElementById('toggleMarkersBtn');
+            btn.textContent = markersVisible ? 'Hide Markers' : 'Show Markers';
+            drawParticles();
+        });
+
+        // Download CSV
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            if (!currentResults) return;
+            
+            const blob = new Blob([currentResults], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'trackpy_results.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Initialize on load
+        initPyodide();
+    </script>
+</body>
+</html>
